@@ -20,12 +20,7 @@ Version: 0.1.0
     res = request.get_info('yahoo.com')
 
     # some common response object methods
-    res.is_success?   # return true if request was successful
-
-    #dynamic methods
-    res.rank          # return the rank of domain name that was passed
-    res.dataurl	      # returns the url which was queried
-
+    res.success?   # return true if request was successful
 
 Refer to Amazon AWIS documentation for more information on Amazon REST request parameters and XML output:
 http://docs.amazonwebservices.com/AlexaWebInfoService/2005-07-11/
