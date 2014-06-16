@@ -8,53 +8,73 @@ require "time"
 require "hpricot"
 
 module Amazon
-
   class RequestError < StandardError; end
 
   class Awis
-    @@options = {
-      :action => "UrlInfo",
-      :responsegroup => "Rank"
+    @@option_defaults = {
+      action: "UrlInfo",
+      responsegroup: "Rank",
+      debug: false
     }
 
-    @@debug = false
+    AWIS_DOMAIN = 'awis.amazonaws.com'
 
-    # Default service options
-    def self.options
-      @@options
+    # Converts a hash into a query string (e.g. {a => 1, b => 2} becomes "a=1&b=2")
+    def self.escape_query(query)
+      query.to_a.collect { |item| item.first + '=' + CGI::escape(item.last.to_s) }.join('&')
     end
 
-    # Set default service options
-    def self.options=(opts)
-      @@options = opts
+    def self.prepare_url(domain, options)
+      params = {
+        'AWSAccessKeyId'   => options[:aws_access_key_id],
+        'Action'           => options[:action],
+        'ResponseGroup'    => options[:responsegroup],
+        'SignatureMethod'  => 'HmacSHA1',
+        'SignatureVersion' => 2,
+        'Timestamp'        => Time.now.utc.iso8601,
+        'Url'              => domain
+      }
+
+      signature = Base64.encode64(
+        OpenSSL::HMAC.digest(
+          'sha1', options[:aws_secret_key],
+          "GET\n#{AWIS_DOMAIN}\n/\n" + escape_query(params).strip
+        )
+      ).chomp
+
+      query = escape_query(
+        params.merge('Signature' => signature)
+      )
+
+      URI.parse "http://#{AWIS_DOMAIN}/?#{query}"
     end
 
-    # Get debug flag.
-    def self.debug
-      @@debug
+    def initialize(options)
+      @options = @@option_defaults.merge options
+      @debug = @options[:debug]
     end
 
-    # Set debug flag to true or false.
-    def self.debug=(dbg)
-      @@debug = dbg
-    end
-
-    def self.configure(&proc)
-      raise ArgumentError, "Block is required." unless block_given?
-      yield @@options
-    end
-
-    def self.get_info(domain)
-      url = self.prepare_url(domain)
+    def get_info(domain)
+      url = self.class.prepare_url(domain, @options)
       log "Request URL: #{url}"
-      res = Net::HTTP.get_response(url)
+      res = Net::HTTP.get_response url
       unless res.kind_of? Net::HTTPSuccess
         raise Amazon::RequestError, "HTTP Response: #{res.code} #{res.message} #{res.body}"
       end
       log "Response text: #{res.body}"
-      Response.new(res.body)
+      Response.new res.body
     end
 
+    def log(s)
+      return unless @debug
+      if defined? RAILS_DEFAULT_LOGGER
+        RAILS_DEFAULT_LOGGER.error s
+      elsif defined? LOGGER
+        LOGGER.error s
+      else
+        puts s
+      end
+    end
 
     # Response object returned after a REST call to Amazon service.
     class Response
@@ -97,46 +117,6 @@ module Amazon
           txt
         end
       end
-
-    end
-
-    protected
-
-    def self.log(s)
-      return unless self.debug
-      if defined? RAILS_DEFAULT_LOGGER
-        RAILS_DEFAULT_LOGGER.error(s)
-      elsif defined? LOGGER
-        LOGGER.error(s)
-      else
-        puts s
-      end
-    end
-
-    private
-
-    # Converts a hash into a query string (e.g. {a => 1, b => 2} becomes "a=1&b=2")
-    def self.escape_query(query)
-      query.to_a.collect { |item| item.first + '=' + CGI::escape(item.last.to_s) }.join('&')
-    end
-
-    def self.prepare_url(domain)
-      query = {
-        'AWSAccessKeyId'   => self.options[:aws_access_key_id],
-        'Action'           => self.options[:action],
-        'ResponseGroup'    => self.options[:responsegroup],
-        'SignatureMethod'  => 'HmacSHA1',
-        'SignatureVersion' => 2,
-        'Timestamp'        => Time.now.utc.iso8601,
-        'Url'              => domain
-      }
-      awis_domain = 'awis.amazonaws.com'
-      URI.parse("http://#{awis_domain}/?" + escape_query(query.merge({
-        'Signature' => Base64.encode64(
-          OpenSSL::HMAC.digest(
-            'sha1', self.options[:aws_secret_key],
-            "GET\n#{awis_domain}\n/\n" + escape_query(query).strip)).chomp
-      })))
     end
   end
 
