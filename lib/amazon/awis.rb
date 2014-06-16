@@ -11,8 +11,8 @@ module Amazon
 
   class Awis
     @@option_defaults = {
-      action: "UrlInfo",
-      responsegroup: "Rank",
+      action: 'TrafficHistory',
+      responsegroup: 'History',
       debug: false
     }
 
@@ -24,13 +24,15 @@ module Amazon
     end
 
     def self.prepare_url(domain, options)
+      timestamp_now = Time.now.utc.iso8601
       params = {
         'AWSAccessKeyId'   => options[:aws_access_key_id],
         'Action'           => options[:action],
         'ResponseGroup'    => options[:responsegroup],
         'SignatureMethod'  => 'HmacSHA1',
         'SignatureVersion' => 2,
-        'Timestamp'        => Time.now.utc.iso8601,
+        'Start'            => options[:start] || timestamp_now,
+        'Timestamp'        => timestamp_now,
         'Url'              => domain
       }
 
@@ -61,7 +63,8 @@ module Amazon
         raise Amazon::RequestError, "HTTP Response: #{res.code} #{res.message} #{res.body}"
       end
       log "Response text: #{res.body}"
-      Response.new res.body
+
+      Response.new(res.body, @options[:action])
     end
 
     def log(s)
@@ -78,8 +81,11 @@ module Amazon
     # Response object returned after a REST call to Amazon service.
     class Response
       # XML input is in string format
-      def initialize(xml)
+      def initialize(xml, type)
+        @type = type
         @doc = Nokogiri::XML.parse xml
+        # make parsing much easier since namespaces are not required here
+        @doc.remove_namespaces!
       end
 
       def doc
@@ -103,7 +109,43 @@ module Amazon
 
       # Return error message.
       def success?
-        @doc.at('aws:statuscode').inner_text == 'Success'
+        @doc.at('statuscode').inner_text == 'Success'
+      end
+
+      def data
+        case @type
+        when 'TrafficHistory'
+          parse_history @doc.at('//TrafficHistory')
+        else
+          raise "Action type: #{@type} not yet supported"
+        end
+      end
+
+      def parse_history(node)
+        return unless node
+
+        range = node.at('Range').text
+        site = node.at('Site').text
+
+        # parse data rows
+        row_nodes = node.xpath '//HistoricalData/Data'
+        rows = row_nodes.map do |row_node|
+          date = row_node.at('Date').text
+          rank = row_node.at('Rank').text
+          reach = row_node.at('Reach/PerMillion').text
+
+          {
+            date: date,
+            rank: rank,
+            reach: reach
+          }
+        end
+
+        {
+          range: range,
+          site: site,
+          rows: rows
+        }
       end
     end
   end
