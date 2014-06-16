@@ -29,7 +29,7 @@ module Amazon
         'AWSAccessKeyId'   => options[:aws_access_key_id],
         'Action'           => options[:action],
         'ResponseGroup'    => options[:responsegroup],
-        'SignatureMethod'  => 'HmacSHA1',
+        'SignatureMethod'  => 'HmacSHA256',
         'SignatureVersion' => 2,
         'Start'            => options[:start] || timestamp_now,
         'Timestamp'        => timestamp_now,
@@ -38,7 +38,7 @@ module Amazon
 
       signature = Base64.encode64(
         OpenSSL::HMAC.digest(
-          'sha1', options[:aws_secret_key],
+          'sha256', options[:aws_secret_key],
           "GET\n#{AWIS_DOMAIN}\n/\n" + escape_query(params).strip
         )
       ).chomp
