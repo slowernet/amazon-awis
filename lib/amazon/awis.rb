@@ -132,11 +132,16 @@ module Amazon
         rows = row_nodes.map do |row_node|
           date = row_node.at('Date').text
           rank = row_node.at('Rank').text
+          pageviews = row_node.at('PageViews/PerMillion').text
+          pageviews_per_user = row_node.at('PageViews/PerUser').text
+
           reach = row_node.at('Reach/PerMillion').text
 
           {
             date: date,
             rank: rank,
+            pageviews: pageviews,
+            pageviews_per_user: pageviews_per_user,
             reach: reach
           }
         end
