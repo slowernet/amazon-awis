@@ -109,7 +109,7 @@ module Amazon
 
       # Return error message.
       def success?
-        @doc.at('statuscode').inner_text == 'Success'
+        @doc.at('StatusCode').inner_text == 'Success'
       end
 
       def data
