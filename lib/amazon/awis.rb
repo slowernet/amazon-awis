@@ -10,31 +10,35 @@ module Amazon
   class RequestError < StandardError; end
 
   class Awis
-    @@option_defaults = {
-      action: 'TrafficHistory',
-      responsegroup: 'History',
-      debug: false
-    }
-
     AWIS_DOMAIN = 'awis.amazonaws.com'
 
     # Converts a hash into a query string (e.g. {a => 1, b => 2} becomes "a=1&b=2")
     def self.escape_query(query)
-      query.to_a.collect { |item| item.first + '=' + CGI::escape(item.last.to_s) }.join('&')
+      query.to_a.sort_by(&:first).map { |item| item.first + '=' + CGI::escape(item.last.to_s) }.join('&')
     end
 
-    def self.prepare_url(domain, options)
+    def self.prepare_url(domain, action, options)
       timestamp_now = Time.now.utc.iso8601
+
       params = {
         'AWSAccessKeyId'   => options[:aws_access_key_id],
-        'Action'           => options[:action],
-        'ResponseGroup'    => options[:responsegroup],
+        'Action'           => action,
         'SignatureMethod'  => 'HmacSHA256',
         'SignatureVersion' => 2,
-        'Start'            => options[:start] || timestamp_now,
         'Timestamp'        => timestamp_now,
         'Url'              => domain
       }
+
+      # Set defaults for actions
+      case action
+      when 'TrafficHistory'
+        params['ResponseGroup'] = options[:response_group] || 'History'
+        params['Start'] = options[:start] || timestamp_now
+      when 'UrlInfo'
+        params['ResponseGroup'] = options[:response_group] || 'RankByCountry'
+      else
+        raise "Unsupported Amazon AWIS action:#{action}"
+      end
 
       signature = Base64.encode64(
         OpenSSL::HMAC.digest(
@@ -51,12 +55,14 @@ module Amazon
     end
 
     def initialize(options)
-      @options = @@option_defaults.merge options
+      @options = options
+      @action = options.delete(:action) || 'TrafficHistory'
+
       @debug = @options[:debug]
     end
 
     def get_info(domain)
-      url = self.class.prepare_url(domain, @options)
+      url = self.class.prepare_url(domain, @action, @options)
       log "Request URL: #{url}"
       res = Net::HTTP.get_response url
       unless res.kind_of? Net::HTTPSuccess
@@ -64,7 +70,11 @@ module Amazon
       end
       log "Response text: #{res.body}"
 
-      Response.new(res.body, @options[:action])
+      if @action == 'TrafficHistory'
+        HistoryResponse.new(res.body, @action)
+      else
+        UrlInfoResponse.new(res.body, @action)
+      end
     end
 
     def log(s)
@@ -111,7 +121,9 @@ module Amazon
       def success?
         @doc.at('StatusCode').inner_text == 'Success'
       end
+    end
 
+    class HistoryResponse < Response
       def data
         case @type
         when 'TrafficHistory'
@@ -151,6 +163,34 @@ module Amazon
           site: site,
           rows: rows
         }
+      end
+    end
+
+    class UrlInfoResponse < Response
+      def data
+        case @type
+        when 'UrlInfo'
+          parse_countries @doc.at('//RankByCountry')
+        else
+          raise "Action type: #{@type} not yet supported"
+        end
+      end
+
+      def parse_countries(node)
+        return unless node
+
+        node.xpath('//Country').each_with_object({}) do |country_node, obj|
+          country_code = country_node.attr 'Code'
+          rank = country_node.at('Rank').text
+          users = country_node.at('Contribution/Users').text
+          pageviews = country_node.at('Contribution/PageViews').text
+
+          obj[country_code] = {
+            rank: rank,
+            users: users,
+            pageviews: pageviews
+          }
+        end
       end
     end
   end

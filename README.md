@@ -2,7 +2,7 @@
 
 Fetch information from AWIS (Alexa Web Information Service).
 
-**Currently only implemented for TrafficHistory Action.**
+**Currently only implemented for Action:TrafficHistory & Action:UrlInfo;ResponseGroup:RankByCountry.**
 
 #### Install
 
@@ -25,6 +25,10 @@ res = request.get_info('yahoo.com')
 # some common response object methods
 res.success?   # return true if request was successful
 res.data
+
+# fetch country specific data
+request = Amazon::Awis.new(aws_access_key_id: [your developer token], aws_secret_key: [your secret access key], action: 'UrlInfo')
+
 ```
 
 Refer to Amazon AWIS documentation for more information on Amazon REST request parameters and XML output:
