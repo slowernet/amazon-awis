@@ -64,7 +64,18 @@ module Amazon
     def get_info(domain)
       url = self.class.prepare_url(domain, @action, @options)
       log "Request URL: #{url}"
-      res = Net::HTTP.get_response url
+
+      # Amazon alexa endpoint seems to have problems and sometimes returns a 404 for valid
+      # awis requests - as a workaround, we hammer the endpoint max 20 times until we get
+      # a proper response -
+
+      request_counter = 0
+
+      while res = Net::HTTP.get_response(url) do
+        request_counter += 1
+        break if res.kind_of? Net::HTTPSuccess || request_counter >= 20
+      end
+
       unless res.kind_of? Net::HTTPSuccess
         raise Amazon::RequestError, "HTTP Response: #{res.code} #{res.message} #{res.body}"
       end
