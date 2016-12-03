@@ -5,6 +5,7 @@ require "digest/sha1"
 require "uri"
 require "net/https"
 require "time"
+require "nokogiri"
 
 module Amazon
   class RequestError < StandardError; end
@@ -134,75 +135,14 @@ module Amazon
       end
     end
 
+    def data
+      @doc
+    end
+
     class HistoryResponse < Response
-      def data
-        case @type
-        when 'TrafficHistory'
-          parse_history @doc.at('//TrafficHistory')
-        else
-          raise "Action type: #{@type} not yet supported"
-        end
-      end
-
-      def parse_history(node)
-        return unless node
-
-        range = node.at('Range').text
-        site = node.at('Site').text
-
-        # parse data rows
-        row_nodes = node.xpath '//HistoricalData/Data'
-        rows = row_nodes.map do |row_node|
-          date = row_node.at('Date').text
-          rank = row_node.at('Rank').text
-          pageviews = row_node.at('PageViews/PerMillion').text
-          pageviews_per_user = row_node.at('PageViews/PerUser').text
-
-          reach = row_node.at('Reach/PerMillion').text
-
-          {
-            date: date,
-            rank: rank,
-            pageviews: pageviews,
-            pageviews_per_user: pageviews_per_user,
-            reach: reach
-          }
-        end
-
-        {
-          range: range,
-          site: site,
-          rows: rows
-        }
-      end
     end
 
     class UrlInfoResponse < Response
-      def data
-        case @type
-        when 'UrlInfo'
-          parse_countries @doc.at('//RankByCountry')
-        else
-          raise "Action type: #{@type} not yet supported"
-        end
-      end
-
-      def parse_countries(node)
-        return unless node
-
-        node.xpath('//Country').each_with_object({}) do |country_node, obj|
-          country_code = country_node.attr 'Code'
-          rank = country_node.at('Rank').text
-          users = country_node.at('Contribution/Users').text
-          pageviews = country_node.at('Contribution/PageViews').text
-
-          obj[country_code] = {
-            rank: rank,
-            users: users,
-            pageviews: pageviews
-          }
-        end
-      end
     end
   end
 end
