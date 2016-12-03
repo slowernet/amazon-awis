@@ -82,11 +82,7 @@ module Amazon
       end
       log "Response text: #{res.body}"
 
-      if @action == 'TrafficHistory'
-        HistoryResponse.new(res.body, @action)
-      else
-        UrlInfoResponse.new(res.body, @action)
-      end
+      Response.new(res.body, @action)
     end
 
     def log(s)
@@ -133,16 +129,10 @@ module Amazon
       def success?
         @doc.at('StatusCode').inner_text == 'Success'
       end
-    end
 
-    def data
-      @doc
-    end
-
-    class HistoryResponse < Response
-    end
-
-    class UrlInfoResponse < Response
+      def data
+        @doc
+      end
     end
   end
 end
